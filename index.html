@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GNSS Track Editor</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow" data-i18n="app.eyebrow">TRACK LOGGER TOOL</div>
+      <h1 data-i18n="app.title">GNSS Track Editor</h1>
+      <div id="trackSubtitle" class="subtitle">Portland International Raceway · GNSS-derived reference</div>
+    </div>
+    <div class="top-actions">
+      <label class="language-control">
+        <span data-i18n="app.language">Language</span>
+        <select id="languageSelect" aria-label="Language">
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+        </select>
+      </label>
+      <button id="fitBtn" class="btn secondary" data-i18n="actions.fitTrack">Fit track</button>
+      <button id="exportBtn" class="btn primary" data-i18n="actions.exportTrackDefinition">Export TrackDefinition</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker" data-i18n="sections.data">1 · DATA</div>
+            <h2 data-i18n="data.referenceTitle">GNSS reference</h2>
+          </div>
+          <span id="dataBadge" class="badge good" data-i18n="badges.pirSample">PIR sample</span>
+        </div>
+
+        <div id="sessionStats" class="stats-grid"></div>
+
+        <div class="button-grid">
+          <button id="sampleBtn" class="btn secondary" data-i18n="actions.reloadPirSample">Reload PIR sample</button>
+          <label class="btn secondary file-btn">
+            <span data-i18n="actions.loadCsv">Load CSV</span>
+            <input id="csvInput" type="file" accept=".csv,text/csv" hidden />
+          </label>
+        </div>
+
+        <details class="map-settings">
+          <summary data-i18n="map.settings">Satellite map settings</summary>
+          <label>
+            <span data-i18n="map.arcgisToken">ArcGIS access token</span>
+            <span class="optional" data-i18n="common.optional">(optional)</span>
+            <input id="arcgisTokenInput" type="password" autocomplete="off"
+                   placeholder="Use official token endpoint"
+                   data-i18n-placeholder="map.tokenPlaceholder">
+          </label>
+          <div class="micro" data-i18n="map.tokenNote">
+            Without a token, the editor uses the public fallback. The token is stored only in this browser's localStorage.
+          </div>
+        </details>
+
+        <div id="sessionWorkflow" class="workflow hidden">
+          <div class="callout" data-i18n="data.newCsvWorkflow">
+            For a new CSV, first place a temporary detection line on a clean straight, then detect laps and build the median reference path.
+          </div>
+          <div class="button-grid">
+            <button id="setSfBtn" class="btn secondary" data-i18n="actions.setDetectionSf">Set detection S/F</button>
+            <button id="detectLapsBtn" class="btn secondary" disabled data-i18n="actions.detectLaps">Detect laps</button>
+          </div>
+          <div id="lapList" class="lap-list"></div>
+          <button id="buildRefBtn" class="btn primary full" disabled data-i18n="actions.buildMedianReference">Build median reference</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker" data-i18n="sections.timing">2 · TIMING</div>
+            <h2 data-i18n="timing.title">Start / Finish & sectors</h2>
+          </div>
+          <span id="timingProgress" class="badge">0 / 3 lines</span>
+        </div>
+
+        <p class="hint" data-i18n-html="timing.description">
+          Place the final <b>Start/Finish line</b> and sector split lines directly on the GNSS reference path.
+          For <b>3 sectors</b>, place two split lines: S1 end and S2 end; S3 ends automatically at Start/Finish.
+        </p>
+
+        <div class="timing-main-row">
+          <div>
+            <div class="point-name" data-i18n="timing.startFinish">START / FINISH</div>
+            <div id="timingSfValue" class="timing-point-value" data-i18n="common.notSet">not set</div>
+          </div>
+          <div class="timing-actions">
+            <button id="setTimingSfBtn" class="btn secondary compact-btn" data-i18n="actions.setOnMap">Set on map</button>
+            <button id="clearTimingSfBtn" class="icon-btn" title="Clear" data-i18n-title="actions.clear">×</button>
+          </div>
+        </div>
+
+        <div class="sector-count-row">
+          <label>
+            <span data-i18n="timing.numberOfSectors">Number of sectors</span>
+            <div class="number-field">
+              <input id="sectorCountInput" type="number" min="1" max="20" step="1" value="3">
+              <span data-i18n="timing.sectorsUnit">sectors</span>
+            </div>
+          </label>
+          <label>
+            <span data-i18n="timing.lineWidth">Timing line width</span>
+            <div class="number-field">
+              <input id="timingLineWidthInput" type="number" min="20" max="150" step="5" value="55">
+              <span>m</span>
+            </div>
+          </label>
+        </div>
+
+        <div id="sectorList" class="sector-list"></div>
+
+        <div id="timingModeHint" class="mode-hint" data-i18n="timing.defaultHint">
+          Click Set on map, then click the reference line. Timing markers can be dragged afterward.
+        </div>
+
+        <div id="timingWarning" class="warning hidden"></div>
+
+        <button id="clearTimingBtn" class="btn danger-text full" data-i18n="actions.clearTiming">Clear timing markup</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker" data-i18n="sections.corners">3 · CORNERS</div>
+            <h2 data-i18n="corners.title">Manual corners</h2>
+          </div>
+          <span id="cornerProgress" class="badge">0 / 12</span>
+        </div>
+
+        <p class="hint" data-i18n-html="corners.description">
+          For each corner, place only <b>Start → Apex → End</b>. Points always snap to the GNSS reference path.
+          Gates and the analysis polygon are generated automatically.
+        </p>
+
+        <div class="corner-set-row">
+          <select id="cornerPresetSelect">
+            <option value="pir">PIR · T1–T12</option>
+            <option value="pacific">Pacific · 3A/3B, 5A/5B</option>
+            <option value="custom" data-i18n="common.custom">Custom</option>
+          </select>
+          <button id="applyCornerPresetBtn" class="btn secondary" data-i18n="actions.apply">Apply</button>
+        </div>
+
+        <div class="custom-corner-row">
+          <input id="newCornerIdInput" type="text" maxlength="12" placeholder="e.g. T3A" data-i18n-placeholder="corners.newIdPlaceholder">
+          <button id="addCornerBtn" class="btn secondary" data-i18n="actions.addCorner">Add corner</button>
+        </div>
+
+        <div id="turnList" class="turn-list"></div>
+
+        <div class="turn-editor">
+          <div class="selected-turn-row">
+            <div>
+              <div class="section-kicker" data-i18n="common.selected">SELECTED</div>
+              <div id="selectedTurnTitle" class="selected-turn">T1</div>
+            </div>
+            <div class="turn-nav">
+              <button id="renameTurnBtn" class="icon-btn wide" title="Rename" data-i18n="actions.rename" data-i18n-title="actions.rename">Rename</button>
+              <button id="deleteTurnBtn" class="icon-btn wide danger-mini" title="Delete" data-i18n="actions.delete" data-i18n-title="actions.delete">Delete</button>
+              <button id="prevTurnBtn" class="icon-btn" title="Previous" data-i18n-title="actions.previous">←</button>
+              <button id="nextTurnBtn" class="icon-btn" title="Next" data-i18n-title="actions.next">→</button>
+            </div>
+          </div>
+
+          <div id="pointRows" class="point-rows"></div>
+
+          <div class="button-grid three">
+            <button class="btn point-mode" data-field="start" data-i18n="actions.setStart">Set Start</button>
+            <button class="btn point-mode" data-field="apex" data-i18n="actions.setApex">Set Apex</button>
+            <button class="btn point-mode" data-field="end" data-i18n="actions.setEnd">Set End</button>
+          </div>
+
+          <div id="modeHint" class="mode-hint" data-i18n="corners.defaultHint">
+            Choose Start/Apex/End, then click the line.
+          </div>
+
+          <div id="cornerWarning" class="warning hidden"></div>
+
+          <div class="settings-row">
+            <label>
+              <span data-i18n="corners.gateWidth">Gate width</span>
+              <div class="number-field"><input id="gateWidthInput" type="number" min="20" max="120" step="5" value="50"><span>m</span></div>
+            </label>
+            <label>
+              <span data-i18n="corners.analysisBuffer">Analysis buffer</span>
+              <div class="number-field"><input id="bufferWidthInput" type="number" min="8" max="80" step="2" value="24"><span>m</span></div>
+            </label>
+          </div>
+
+          <button id="clearTurnBtn" class="btn danger-text full" data-i18n="actions.clearSelectedCorner">Clear selected corner</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading compact">
+          <div>
+            <div class="section-kicker" data-i18n="reference.referenceOnly">REFERENCE ONLY</div>
+            <h2 data-i18n="reference.pirNumbering">PIR turn numbering</h2>
+          </div>
+        </div>
+        <img class="turn-guide" src="assets/portland_turn_guide.jpg"
+             alt="PIR numbered turn guide" data-i18n-alt="reference.pirGuideAlt">
+        <p class="micro" data-i18n-html="reference.guideNote">
+          This image is only a visual guide for corner numbering. It is <b>not</b> used for coordinates or map alignment.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading compact">
+          <div>
+            <div class="section-kicker" data-i18n="sections.project">4 · PROJECT</div>
+            <h2 data-i18n="project.title">Save / load</h2>
+          </div>
+        </div>
+        <div class="button-grid">
+          <button id="saveProjectBtn" class="btn secondary" data-i18n="actions.saveProject">Save project</button>
+          <label class="btn secondary file-btn">
+            <span data-i18n="actions.importProject">Import project</span>
+            <input id="projectInput" type="file" accept=".json,application/json" hidden />
+          </label>
+        </div>
+        <button id="resetMarkupBtn" class="btn danger-text full" data-i18n="actions.resetCorners">Reset all corner markup</button>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <div class="canvas-toolbar">
+        <label class="toggle"><input id="showSatelliteToggle" type="checkbox" checked><span data-i18n="map.satellite">Satellite</span></label>
+        <label class="toggle"><input id="showRawToggle" type="checkbox" checked><span data-i18n="map.rawLaps">Raw laps</span></label>
+        <label class="toggle"><input id="showDerivedToggle" type="checkbox" checked><span data-i18n="map.gatesZones">Gates / zones</span></label>
+        <label class="opacity-control" title="Satellite opacity" data-i18n-title="map.satelliteOpacity">
+          <span data-i18n="map.map">Map</span>
+          <input id="satelliteOpacity" type="range" min="25" max="100" step="5" value="88">
+        </label>
+        <div class="toolbar-spacer"></div>
+        <span id="cursorReadout" class="cursor-readout">s — · lat — · lon —</span>
+      </div>
+
+      <div id="plotWrap" class="plot-wrap">
+        <div id="satelliteLayer" class="satellite-layer" aria-hidden="true"></div>
+        <div id="satelliteAttribution" class="satellite-attribution">Satellite: Esri World Imagery · Esri, Vantor, Earthstar Geographics, GIS User Community</div>
+        <svg id="plot" aria-label="GNSS track editor"></svg>
+        <div id="emptyState" class="empty-state hidden">
+          <h3 data-i18n="empty.title">Load a GNSS CSV</h3>
+          <p data-i18n="empty.description">Then place Start/Finish, detect laps, and build the reference path.</p>
+        </div>
+        <div class="plot-help" data-i18n="map.help">
+          Wheel = zoom · drag empty space = pan · drag timing/corner markers = move along reference
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <div id="statusText" data-i18n="status.ready">Ready.</div>
+        <div id="referenceSummary" data-i18n="status.referenceEmpty">Reference: —</div>
+      </div>
+    </main>
+  </div>
+
+  <script src="sample_data.js"></script>
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
